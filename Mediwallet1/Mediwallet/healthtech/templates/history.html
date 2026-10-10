@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+{% block title %}Medical History Timeline{% endblock %}
+{% block nav_history %}active{% endblock %}
+{% block mnav_history %}active{% endblock %}
+{% block page_title %}Medical History Timeline{% endblock %}
+
+{% block content %}
+<div class="stack" style="gap:var(--sp-6)">
+
+  <!-- Filter & Search Toolbar -->
+  <div class="card">
+    <div class="card-body" style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      
+      <div style="display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <!-- Search Input -->
+        <div class="search-wrap" style="flex:1;min-width:280px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search by doctor, hospital, notes, filename..." oninput="debounceSearch()">
+        </div>
+
+        <!-- View Switcher Tabs -->
+        <div class="tabs" style="min-width:240px">
+          <div class="tab-btn active" id="tab-timeline" onclick="switchView('timeline')">Timeline</div>
+          <div class="tab-btn" id="tab-grouped" onclick="switchView('grouped')">Categories</div>
+        </div>
+      </div>
+
+      <!-- Category Filter Chips -->
+      <div class="filter-row">
+        <span class="filter-chip active" data-type="" onclick="selectCategory(this, '')">All Records</span>
+        <span class="filter-chip" data-type="prescription" onclick="selectCategory(this, 'prescription')">Prescriptions</span>
+        <span class="filter-chip" data-type="blood_test" onclick="selectCategory(this, 'blood_test')">Blood Tests</span>
+        <span class="filter-chip" data-type="scan" onclick="selectCategory(this, 'scan')">Scans</span>
+        <span class="filter-chip" data-type="discharge" onclick="selectCategory(this, 'discharge')">Discharge Summaries</span>
+        <span class="filter-chip" data-type="diagnosis" onclick="selectCategory(this, 'diagnosis')">Diagnoses</span>
+        <span class="filter-chip" data-type="other" onclick="selectCategory(this, 'other')">Other</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Content Container -->
+  <div id="history-loading" class="loading-state">
+    <div class="spinner spinner-lg"></div>
+    <span class="loading-text">Loading medical records...</span>
+  </div>
+
+  <div id="history-container" class="hidden">
+    <!-- Timeline View Container -->
+    <div id="timeline-view" class="timeline"></div>
+
+    <!-- Category Grouped View Container -->
+    <div id="grouped-view" class="stack hidden" style="gap:var(--sp-6)"></div>
+
+    <!-- Empty State Container -->
+    <div id="empty-state-view" class="card hidden">
+      <div class="card-body">
+        <div class="empty-state">
+          <div class="empty-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div class="empty-title">No matching records found</div>
+          <div class="empty-text">Try adjusting your filters or upload a new medical document to your timeline.</div>
+          <a href="/upload" class="btn btn-primary btn-sm" style="margin-top:var(--sp-2)">Upload Record</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Record Detail & OCR Review Modal -->
+<div class="overlay" id="record-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-doc-title">Document Details</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('record-modal')">✕</button>
+    </div>
+    <div class="modal-body stack" style="gap:var(--sp-5)">
+      
+      <!-- Metadata preview -->
+      <div class="grid-2">
+        <div class="health-field">
+          <div class="hf-icon" style="background:var(--butter)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="hf-body">
+            <div class="hf-label">Document Date</div>
+            <div class="hf-value" id="modal-doc-date">—</div>
+          </div>
+        </div>
+        <div class="health-field">
+          <div class="hf-icon" style="background:var(--peach)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
+          </div>
+          <div class="hf-body">
+            <div class="hf-label">Document Type</div>
+            <div class="hf-value" id="modal-doc-type">—</div>
+          </div>
+        </div>
+        <div class="health-field">
+          <div class="hf-icon" style="background:var(--sage)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary-deep)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+          </div>
+          <div class="hf-body">
+            <div class="hf-label">Hospital / Clinic</div>
+            <div class="hf-value" id="modal-doc-hospital">—</div>
+          </div>
+        </div>
+        <div class="health-field">
+          <div class="hf-icon" style="background:var(--butter)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="hf-body">
+            <div class="hf-label">Consulting Doctor</div>
+            <div class="hf-value" id="modal-doc-doctor">—</div>
+          </div>
+        </div>
+        <div class="health-field" style="grid-column:1 / -1">
+          <div class="hf-icon" style="background:var(--peach)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="hf-body" style="width:100%">
+            <div class="hf-label">Folder / Category</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:2px">
+              <input type="text" id="modal-doc-folder" class="form-input" style="height:34px;padding:4px 10px;font-size:var(--tx-sm);max-width:300px" list="history-folders-list" placeholder="Folder name...">
+              <datalist id="history-folders-list"></datalist>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Similar Earlier Test Warning (Prevent Duplicate Testing) -->
+      <div id="modal-similar-warning" class="hidden"></div>
+
+      <!-- OCR Extracted Text & Patient Correction -->
+      <div class="card" style="border:1px solid var(--peach)">
+        <div class="card-header" style="background:var(--card)">
+          <div>
+            <div class="card-title" style="font-size:var(--tx-base)">Extracted Text (OCR)</div>
+            <div class="card-subtitle">Review or correct any recognition inaccuracies below</div>
+          </div>
+          <span id="modal-verify-badge" class="badge badge-neutral">Status</span>
+        </div>
+        <div class="card-body stack" style="gap:var(--sp-3)">
+          <textarea id="modal-extracted-text" class="form-textarea" style="min-height:160px;font-family:monospace;font-size:var(--tx-sm)"></textarea>
+          <div class="alert alert-warning" style="font-size:var(--tx-xs)">
+            <div class="alert-body">
+              <strong>Medical Disclaimer:</strong> OCR and automated extracts are provided for convenience. Never make clinical medication or dosage adjustments based on automated text without checking the original document.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('record-modal')">Close</button>
+      <a href="#" id="modal-download-link" class="btn btn-secondary" target="_blank" download>
+        ⬇️ Download Original
+      </a>
+      <button class="btn btn-primary" id="modal-save-changes-btn" onclick="saveRecordCorrection()">
+        Save Corrections
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="overlay" id="delete-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Delete Medical Record?</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('delete-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:var(--tx-base)">
+        Are you sure you want to delete <strong id="delete-record-name" style="color:var(--text-primary)"></strong>?
+      </p>
+      <p style="color:var(--error);font-size:var(--tx-xs);margin-top:var(--sp-2)">
+        This will remove the file from your timeline and revoke any doctor share links referencing it.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('delete-modal')">Cancel</button>
+      <button class="btn btn-danger" id="confirm-delete-btn" onclick="executeDeleteRecord()">Delete Record</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allRecords = [];
+let groupedRecords = {};
+let activeCategory = '';
+let activeSearchQuery = '';
+let currentView = 'timeline';
+let searchTimer = null;
+let activeModalRecordId = null;
+let recordToDeleteId = null;
+
+(async () => {
+  await requireAuth();
+  await loadRecords();
+})();
+
+async function loadRecords() {
+  document.getElementById('history-loading').classList.remove('hidden');
+  document.getElementById('history-container').classList.add('hidden');
+
+  try {
+    const data = await api.records.list({
+      type: activeCategory,
+      search: activeSearchQuery
+    });
+    allRecords = data.records || [];
+    groupedRecords = data.grouped || {};
+    renderCurrentView();
+  } catch (err) {
+    toast(err.message || 'Error fetching records', 'error');
+  } finally {
+    document.getElementById('history-loading').classList.add('hidden');
+    document.getElementById('history-container').classList.remove('hidden');
+  }
+}
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    activeSearchQuery = document.getElementById('search-input').value.trim();
+    loadRecords();
+  }, 350);
+}
+
+function selectCategory(elem, type) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  elem.classList.add('active');
+  activeCategory = type;
+  loadRecords();
+}
+
+function switchView(view) {
+  currentView = view;
+  document.getElementById('tab-timeline').classList.toggle('active', view === 'timeline');
+  document.getElementById('tab-grouped').classList.toggle('active', view === 'grouped');
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  const timelineEl = document.getElementById('timeline-view');
+  const groupedEl = document.getElementById('grouped-view');
+  const emptyEl = document.getElementById('empty-state-view');
+
+  if (allRecords.length === 0) {
+    timelineEl.classList.add('hidden');
+    groupedEl.classList.add('hidden');
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+
+  if (currentView === 'timeline') {
+    groupedEl.classList.add('hidden');
+    timelineEl.classList.remove('hidden');
+    renderTimelineView(timelineEl);
+  } else {
+    timelineEl.classList.add('hidden');
+    groupedEl.classList.remove('hidden');
+    renderGroupedView(groupedEl);
+  }
+}
+
+function renderTimelineView(container) {
+  let html = '';
+  allRecords.forEach(rec => {
+    const meta = docTypeMeta(rec.document_type);
+    html += `
+      <div class="tl-item">
+        <div class="tl-dot"></div>
+        <div class="tl-date">${fmtDate(rec.document_date || rec.upload_timestamp)}</div>
+        <div class="record-card">
+          <div class="rec-icon ${meta.cls}">${meta.icon}</div>
+          <div class="rec-info">
+            <div class="rec-name">${rec.original_filename || 'Medical Document'}</div>
+            <div class="rec-meta">
+              <span class="badge badge-neutral">${meta.label}</span>
+              ${rec.health_category ? `<span class="badge" style="background:var(--butter);color:var(--text);border:1px solid var(--peach)">${rec.health_category}</span>` : ''}
+              ${rec.hospital ? `<span>· ${rec.hospital}</span>` : ''}
+              ${rec.doctor ? `<span>· Dr. ${rec.doctor.replace(/^Dr\.?\s*/i, '')}</span>` : ''}
+              ${rec.patient_verified ? '<span class="badge badge-success">Verified</span>' : ''}
+            </div>
+          </div>
+          <div class="rec-actions">
+            <button class="btn btn-secondary btn-sm" onclick="openRecordDetails(${rec.id})">Review / OCR</button>
+            <a href="${api.records.downloadUrl(rec.id)}" class="btn btn-outline btn-sm" download title="Download">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </a>
+            <button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="promptDelete(${rec.id}, '${rec.original_filename}')" title="Delete">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+function renderGroupedView(container) {
+  let html = '';
+  const categories = Object.keys(groupedRecords);
+
+  if (categories.length === 0) {
+    container.innerHTML = '<div class="muted">No categories available.</div>';
+    return;
+  }
+
+  categories.forEach(cat => {
+    const recs = groupedRecords[cat] || [];
+    if (recs.length === 0) return;
+    const meta = docTypeMeta(cat);
+
+    html += `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title" style="display:flex;align-items:center;gap:8px">${meta.icon} <span>${meta.label} (${recs.length})</span></div>
+        </div>
+        <div class="card-body stack" style="gap:var(--sp-3)">
+          ${recs.map(rec => `
+            <div class="record-card">
+              <div class="rec-icon ${meta.cls}">${meta.icon}</div>
+              <div class="rec-info">
+                <div class="rec-name">${rec.original_filename || 'Document'}</div>
+                <div class="rec-meta">
+                  <span>${fmtDate(rec.document_date)}</span>
+                  ${rec.health_category ? `<span class="badge" style="background:var(--butter);color:var(--text);border:1px solid var(--peach)">${rec.health_category}</span>` : ''}
+                  ${rec.hospital ? `<span>· ${rec.hospital}</span>` : ''}
+                  ${rec.doctor ? `<span>· Dr. ${rec.doctor.replace(/^Dr\.?\s*/i, '')}</span>` : ''}
+                </div>
+              </div>
+              <div class="rec-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openRecordDetails(${rec.id})">Review / OCR</button>
+                <a href="${api.records.downloadUrl(rec.id)}" class="btn btn-outline btn-sm" download title="Download">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </a>
+                <button class="btn btn-ghost btn-sm" style="color:var(--accent)" onclick="promptDelete(${rec.id}, '${rec.original_filename}')" title="Delete">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  });
+  container.innerHTML = html;
+}
+
+async function openRecordDetails(recordId) {
+  activeModalRecordId = recordId;
+  openModal('record-modal');
+
+  try {
+    const data = await api.records.get(recordId);
+    const rec = data.record;
+    const similar = data.similar_tests || [];
+
+    document.getElementById('modal-doc-title').textContent = rec.original_filename || 'Record Details';
+    document.getElementById('modal-doc-date').textContent = fmtDate(rec.document_date);
+    document.getElementById('modal-doc-type').textContent = docTypeMeta(rec.document_type).label;
+    document.getElementById('modal-doc-hospital').textContent = rec.hospital || 'Not provided';
+    document.getElementById('modal-doc-doctor').textContent = rec.doctor || 'Not provided';
+    document.getElementById('modal-doc-folder').value = rec.health_category || 'General Health';
+    document.getElementById('modal-extracted-text').value = rec.extracted_text || '';
+    document.getElementById('modal-download-link').href = api.records.downloadUrl(rec.id);
+
+    try {
+      const fData = await api.records.folderNames();
+      const dl = document.getElementById('history-folders-list');
+      if (dl && fData.folders) {
+        dl.innerHTML = fData.folders.map(f => `<option value="${f}">`).join('');
+      }
+    } catch (_) {}
+
+    const badge = document.getElementById('modal-verify-badge');
+    if (rec.patient_verified) {
+      badge.className = 'badge badge-success';
+      badge.textContent = 'Verified by Patient';
+    } else {
+      badge.className = 'badge badge-warning';
+      badge.textContent = 'Unreviewed OCR Extract';
+    }
+
+    // Similar earlier tests warning
+    const warnEl = document.getElementById('modal-similar-warning');
+    if (similar.length > 0) {
+      warnEl.className = 'alert alert-warning';
+      warnEl.classList.remove('hidden');
+      warnEl.innerHTML = `
+        <div class="alert-body">
+          <div class="alert-title">Potential Duplicate Test Notice:</div>
+          <div>${similar[0].warning}</div>
+          <div style="font-size:var(--tx-xs);margin-top:4px;color:var(--text-secondary)">${similar[0].advisory_note}</div>
+        </div>
+      `;
+    } else {
+      warnEl.classList.add('hidden');
+    }
+
+  } catch (err) {
+    toast(err.message || 'Failed to load record details', 'error');
+    closeModal('record-modal');
+  }
+}
+
+async function saveRecordCorrection() {
+  if (!activeModalRecordId) return;
+  const btn = document.getElementById('modal-save-changes-btn');
+  const correctedText = document.getElementById('modal-extracted-text').value;
+  const folderVal = document.getElementById('modal-doc-folder').value.trim();
+
+  setLoading(btn, true, 'Saving...');
+  try {
+    await api.records.update(activeModalRecordId, {
+      extracted_text: correctedText,
+      patient_verified: true,
+      health_category: folderVal || 'General Health'
+    });
+    toast('Corrections and folder saved!', 'success');
+    closeModal('record-modal');
+    loadRecords();
+  } catch (err) {
+    toast(err.message || 'Failed to save corrections', 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+function promptDelete(id, name) {
+  recordToDeleteId = id;
+  document.getElementById('delete-record-name').textContent = name;
+  openModal('delete-modal');
+}
+
+async function executeDeleteRecord() {
+  if (!recordToDeleteId) return;
+  const btn = document.getElementById('confirm-delete-btn');
+  setLoading(btn, true, 'Deleting...');
+
+  try {
+    await api.records.delete(recordToDeleteId);
+    toast('Record deleted successfully.', 'success');
+    closeModal('delete-modal');
+    loadRecords();
+  } catch (err) {
+    toast(err.message || 'Failed to delete record', 'error');
+  } finally {
+    setLoading(btn, false);
+    recordToDeleteId = null;
+  }
+}
+</script>
+{% endblock %}

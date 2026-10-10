@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Doctor Portal — MediWallet</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👨‍⚕️</text></svg>"/>
+</head>
+<body style="background:var(--bg-primary)">
+
+<div id="toast-container"></div>
+
+<!-- Doctor Top Header -->
+<header class="doctor-header">
+  <div class="doctor-header-brand">
+    <div style="width:36px;height:36px;background:var(--primary);border-radius:var(--r-sm);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text);font-size:20px">
+      🩺
+    </div>
+    <div>
+      <span>MediWallet</span>
+      <div class="doctor-header-sub">Clinical Consultation Portal</div>
+    </div>
+  </div>
+  <div>
+    <a href="/login" class="btn btn-secondary btn-sm">
+      Patient Sign In →
+    </a>
+  </div>
+</header>
+
+<main class="doctor-content">
+
+  <!-- Step 1: Token Input / Scan Box (if no token in URL) -->
+  <div class="card" id="token-input-card" style="margin-bottom:var(--sp-6)">
+    <div class="card-header">
+      <div class="card-title">🔑 Access Patient Records</div>
+    </div>
+    <div class="card-body">
+      <p style="color:var(--text-secondary);font-size:var(--tx-sm);margin-bottom:var(--sp-4)">
+        Enter the secure consultation code or paste the share link provided by the patient.
+      </p>
+      <form id="token-form" style="display:flex;gap:var(--sp-3)" onsubmit="submitToken(event)">
+        <input type="text" id="share-token-input" class="form-input" placeholder="e.g. 32-character secure token or URL..." value="{{ prefill_token or '' }}" required>
+        <button type="submit" class="btn btn-primary" id="validate-token-btn" style="min-width:140px">
+          View Records
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="doctor-loading" class="loading-state hidden">
+    <div class="spinner spinner-lg"></div>
+    <span class="loading-text">Validating access pass & decrypting records...</span>
+  </div>
+
+  <!-- Error / Revoked Banner -->
+  <div id="doctor-error-card" class="card hidden" style="border:2px solid var(--error);margin-bottom:var(--sp-6)">
+    <div class="card-body text-center" style="padding:var(--sp-8)">
+      <div style="font-size:48px;margin-bottom:var(--sp-2)">🚫</div>
+      <h3 style="font-size:var(--tx-xl);color:var(--error);font-weight:800">Access Denied</h3>
+      <p style="color:var(--text-secondary);margin-top:var(--sp-2)" id="doctor-error-message">
+        This link has expired, been revoked by the patient, or is invalid.
+      </p>
+    </div>
+  </div>
+
+  <!-- Step 2: Patient Records View (Authorized View) -->
+  <div id="doctor-records-container" class="stack hidden" style="gap:var(--sp-6)">
+    
+    <!-- Consultation Header & Scope -->
+    <div class="card" style="border-top:4px solid var(--color-teal)">
+      <div class="card-body" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--sp-4)">
+        <div>
+          <span class="badge badge-teal" style="margin-bottom:4px">Authorized Session</span>
+          <h2 style="font-size:var(--tx-2xl);font-weight:800;color:var(--text-primary)">
+            Patient: <span id="doc-patient-name">—</span>
+          </h2>
+          <div style="font-size:var(--tx-sm);color:var(--text-secondary);margin-top:2px" id="doc-consult-note"></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:var(--tx-xs);color:var(--text-secondary)">Link Expiry:</div>
+          <div style="font-weight:700;color:var(--warning)" id="doc-expiry-time">—</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:2px">Audit count: <span id="doc-access-count">1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clinical Disclaimer -->
+    <div class="alert alert-warning">
+      <div class="alert-body">
+        <div class="alert-title">⚠️ Clinical Notice</div>
+        <div id="doc-disclaimer-text">
+          These records are shared directly by the patient. Always verify critical clinical information before deciding on treatment.
+        </div>
+      </div>
+    </div>
+
+    <!-- Authorised Medical Documents -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <span>📂 Authorised Documents (<span id="doc-record-count">0</span>)</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="doc-records-list" class="stack" style="gap:var(--sp-4)"></div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script>
+let currentLoadedToken = null;
+
+window.addEventListener('DOMContentLoaded', () => {
+  const prefill = document.getElementById('share-token-input').value.trim();
+  if (prefill) {
+    fetchSharedRecords(prefill);
+  }
+});
+
+function submitToken(e) {
+  e.preventDefault();
+  let token = document.getElementById('share-token-input').value.trim();
+  // If user pasted a full URL, parse the token from it
+  if (token.includes('/view/')) {
+    token = token.split('/view/').pop().split('?')[0].split('/')[0];
+  }
+  if (!token) {
+    toast('Please enter a valid share token.', 'warning');
+    return;
+  }
+  fetchSharedRecords(token);
+}
+
+async function fetchSharedRecords(token) {
+  const loading = document.getElementById('doctor-loading');
+  const errorCard = document.getElementById('doctor-error-card');
+  const recordsContainer = document.getElementById('doctor-records-container');
+
+  loading.classList.remove('hidden');
+  errorCard.classList.add('hidden');
+  recordsContainer.classList.add('hidden');
+
+  try {
+    const data = await api.share.view(token);
+    currentLoadedToken = token;
+
+    // Populate metadata
+    document.getElementById('doc-patient-name').textContent = data.shared_by || 'Verified Patient';
+    document.getElementById('doc-expiry-time').textContent = fmtDatetime(data.expires_at);
+    document.getElementById('doc-access-count').textContent = data.access_count;
+    document.getElementById('doc-consult-note').textContent = data.doctor_note ? `Note: ${data.doctor_note}` : '';
+    if (data.disclaimer) {
+      document.getElementById('doc-disclaimer-text').textContent = data.disclaimer;
+    }
+
+    // Populate authorized records
+    const records = data.records || [];
+    document.getElementById('doc-record-count').textContent = records.length;
+    const listEl = document.getElementById('doc-records-list');
+
+    if (records.length === 0) {
+      listEl.innerHTML = '<div class="muted small">No specific records authorized in this pass.</div>';
+    } else {
+      listEl.innerHTML = records.map(r => {
+        const meta = docTypeMeta(r.document_type);
+        const downloadUrl = api.share.downloadUrl(token, r.id);
+        return `
+          <div class="record-card">
+            <div class="rec-icon ${meta.cls}">${meta.icon}</div>
+            <div class="rec-info">
+              <div class="rec-name">${r.original_filename || 'Record'}</div>
+              <div class="rec-meta">
+                <span class="badge badge-neutral">${meta.label}</span>
+                <span>📅 ${fmtDate(r.document_date || r.upload_timestamp)}</span>
+                ${r.hospital ? `<span>🏥 ${r.hospital}</span>` : ''}
+                ${r.doctor ? `<span>👨‍⚕️ ${r.doctor}</span>` : ''}
+              </div>
+              ${r.extracted_text ? `
+                <div style="margin-top:6px;font-size:var(--tx-xs);color:var(--text-secondary);max-height:60px;overflow:hidden;text-overflow:ellipsis">
+                  📝 <em>"${r.extracted_text.slice(0, 160)}..."</em>
+                </div>
+              ` : ''}
+            </div>
+            <div class="rec-actions">
+              <a href="${downloadUrl}" class="btn btn-primary btn-sm" download target="_blank">
+                ⬇️ Download Report
+              </a>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    recordsContainer.classList.remove('hidden');
+
+  } catch (err) {
+    document.getElementById('doctor-error-message').textContent = err.message || 'Access token invalid or expired.';
+    errorCard.classList.remove('hidden');
+  } finally {
+    loading.classList.add('hidden');
+  }
+}
+</script>
+</body>
+</html>
