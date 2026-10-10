@@ -1,1 +1,1 @@
-# MediVault
+# MediWallet
