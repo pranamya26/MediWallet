@@ -21,3 +21,4 @@ qrcode[pil]
 # Testing
 pytest==8.2.2
 pytest-flask==1.3.0
+gunicorn
