@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% block title %}Health Folders{% endblock %}
+{% block nav_folders %}active{% endblock %}
+{% block page_title %}Health Folders{% endblock %}
+
+{% block content %}
+<div class="stack" style="gap:var(--sp-6)">
+
+  <!-- Page Header -->
+  <div class="card">
+    <div class="card-body" style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);flex-wrap:wrap">
+      <div>
+        <h2 style="font-size:var(--tx-2xl);font-weight:800;color:var(--text)">Health Folders</h2>
+        <p style="color:var(--taupe);margin-top:4px;font-size:var(--tx-sm)">
+          Your medical records organized into custom folders created during upload.
+        </p>
+      </div>
+      <div style="display:flex;gap:var(--sp-3);flex-wrap:wrap">
+        <a href="/upload" class="btn btn-primary btn-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Upload & Create Folder
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="folders-loading" class="loading-state">
+    <div class="spinner spinner-lg"></div>
+    <span class="loading-text">Loading your folders…</span>
+  </div>
+
+  <!-- Folder Grid -->
+  <div id="folders-grid" class="hidden"></div>
+
+  <!-- Folder Detail Panel -->
+  <div id="folder-detail" class="hidden"></div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── Dynamic Palette Rotation for User Folders ─────────────── */
+const PALETTE_THEMES = [
+  { color: 'var(--coral)',       bg: 'var(--apricot-bg)',  gradient: 'var(--apricot-gradient)', border: 'var(--apricot-border)', text: 'var(--apricot-text)' },
+  { color: 'var(--mint-text)',   bg: 'var(--mint-bg)',     gradient: 'var(--mint-gradient)',    border: 'var(--mint-border)',    text: 'var(--mint-text)'    },
+  { color: 'var(--butter-text)', bg: 'var(--butter-bg)',   gradient: 'var(--butter-gradient)',  border: 'var(--butter-border)',  text: 'var(--butter-text)'  },
+  { color: 'var(--blush-text)',  bg: 'var(--blush-bg)',    gradient: 'var(--blush-gradient)',   border: 'var(--blush-border)',   text: 'var(--blush-text)'   },
+  { color: 'var(--aqua-text)',   bg: 'var(--aqua-bg)',     gradient: 'var(--aqua-gradient)',    border: 'var(--aqua-border)',    text: 'var(--aqua-text)'    },
+  { color: 'var(--lavender-text)', bg: 'var(--lavender-bg)', gradient: 'var(--lavender-gradient)', border: 'var(--lavender-border)', text: 'var(--lavender-text)' },
+];
+
+function getFolderTheme(index, name) {
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) & 0xffff;
+  }
+  return PALETTE_THEMES[(hash + index) % PALETTE_THEMES.length];
+}
+
+let allFolderData = {};
+let allFolderRecords = {};
+let openFolderKey = null;
+
+/* ── Boot ───────────────────────────────────────────────────── */
+(async () => {
+  await requireAuth();
+  await loadFolders();
+})();
+
+async function loadFolders() {
+  document.getElementById('folders-loading').classList.remove('hidden');
+  document.getElementById('folders-grid').classList.add('hidden');
+  document.getElementById('folder-detail').classList.add('hidden');
+  try {
+    const data = await api.records.healthFolders();
+    allFolderData    = {};
+    allFolderRecords = data.folder_records || {};
+    (data.folders || []).forEach(f => { allFolderData[f.key] = f; });
+    renderFolderGrid(data.folders || [], data.total || 0);
+    if (openFolderKey) openFolder(openFolderKey);
+  } catch (err) {
+    toast(err.message || 'Failed to load folders', 'error');
+  } finally {
+    document.getElementById('folders-loading').classList.add('hidden');
+  }
+}
+
+/* ── Folder Grid ────────────────────────────────────────────── */
+function renderFolderGrid(folders, total) {
+  const grid = document.getElementById('folders-grid');
+
+  if (!folders || folders.length === 0) {
+    grid.innerHTML = `
+      <div class="card">
+        <div class="card-body">
+          <div class="empty-state" style="padding:var(--sp-10)">
+            <div class="empty-icon">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <div class="empty-title">No folders created yet</div>
+            <div class="empty-text">When you upload medical reports, type your folder name (e.g. Diabetes, Blood Pressure, Heart Health, etc.) to automatically create it.</div>
+            <a href="/upload" class="btn btn-primary btn-sm" style="margin-top:var(--sp-3)">Upload & Create Folder</a>
+          </div>
+        </div>
+      </div>
+    `;
+    grid.classList.remove('hidden');
+    return;
+  }
+
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-2);flex-wrap:wrap;gap:var(--sp-2)">
+      <div style="font-size:var(--tx-sm);color:var(--taupe)">
+        <strong style="color:var(--text)">${total}</strong> reports in
+        <strong style="color:var(--text)">${folders.length}</strong> user folders
+      </div>
+      <div style="font-size:var(--tx-xs);color:var(--taupe)">Click any folder to view its documents</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-4)">
+  `;
+
+  folders.forEach((f, idx) => {
+    const theme = getFolderTheme(idx, f.label);
+    const hasRecords = f.count > 0;
+    html += `
+      <button
+        class="folder-card ${hasRecords ? '' : 'folder-card-empty'}"
+        onclick="openFolder('${f.key.replace(/'/g, "\\'")}')"
+        style="background:${theme.gradient};border-color:${theme.border};--folder-color:${theme.color};--folder-bg:${theme.bg}"
+      >
+        <div class="folder-icon-wrap">
+          <div class="folder-icon" style="background:#FFFFFF;color:${theme.color};box-shadow:0 4px 10px rgba(0,0,0,0.04)">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+        </div>
+        <div class="folder-name">${f.label}</div>
+        <div class="folder-count">
+          <span class="folder-badge">${f.count} ${f.count === 1 ? 'report' : 'reports'}</span>
+        </div>
+        <div class="folder-desc">${f.description || 'Custom user folder'}</div>
+      </button>
+    `;
+  });
+
+  html += `</div>`;
+  grid.innerHTML = html;
+  grid.classList.remove('hidden');
+}
+
+/* ── Open Folder ────────────────────────────────────────────── */
+function openFolder(key) {
+  openFolderKey = key;
+  const folderInfo = allFolderData[key] || { label: key, count: 0 };
+  const records  = allFolderRecords[key] || [];
+  const detail   = document.getElementById('folder-detail');
+  const theme    = getFolderTheme(0, key);
+
+  let recordsHtml;
+  if (records.length === 0) {
+    recordsHtml = `
+      <div class="empty-state" style="padding:var(--sp-8)">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--sage)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="empty-title">No reports in this folder</div>
+        <div class="empty-text">Upload a medical document with this folder name to add reports here.</div>
+        <a href="/upload" class="btn btn-primary btn-sm" style="margin-top:var(--sp-2)">Upload Report</a>
+      </div>`;
+  } else {
+    recordsHtml = `<div class="stack" style="gap:var(--sp-3)">` + records.map(r => {
+      const dm = docTypeMeta(r.document_type);
+      return `
+        <div class="record-card">
+          <div class="rec-icon ${dm.cls}" style="background:${theme.bg}">
+            <div style="color:${theme.color}">${dm.icon}</div>
+          </div>
+          <div class="rec-info">
+            <div class="rec-name">${r.original_filename || 'Medical Document'}</div>
+            <div class="rec-meta">
+              <span class="badge badge-neutral">${dm.label}</span>
+              ${r.document_date ? `<span>${fmtDate(r.document_date)}</span>` : ''}
+              ${r.hospital ? `<span>· ${r.hospital}</span>` : ''}
+              ${r.doctor ? `<span>· Dr. ${(r.doctor || '').replace(/^Dr\.?\s*/i,'')}</span>` : ''}
+              ${r.patient_verified ? '<span class="badge badge-success">Verified</span>' : ''}
+            </div>
+          </div>
+          <div class="rec-actions">
+            <a href="/history" class="btn btn-secondary btn-sm">View in History</a>
+            <a href="${api.records.downloadUrl(r.id)}" class="btn btn-outline btn-sm" download title="Download">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </a>
+            <button class="btn btn-ghost btn-sm" title="Move to another folder" onclick="openMoveModal(${r.id}, '${(r.original_filename || 'Record').replace(/'/g, "\\'")}', '${(r.health_category || key).replace(/'/g, "\\'")}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 9l4-4 4 4"/><path d="M9 5v11"/><path d="M19 15l-4 4-4-4"/><path d="M15 19V8"/>
+              </svg>
+            </button>
+          </div>
+        </div>`;
+    }).join('') + `</div>`;
+  }
+
+  detail.innerHTML = `
+    <div class="card">
+      <div class="card-header" style="background:${theme.bg};border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:var(--sp-3)">
+          <div style="color:${theme.color};display:flex;align-items:center">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="card-title" style="color:var(--text)">${folderInfo.label}</div>
+            <div class="card-subtitle">User-defined health folder</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--sp-2);align-items:center">
+          <span class="badge badge-neutral">${records.length} report${records.length !== 1 ? 's' : ''}</span>
+          <button class="btn btn-ghost btn-sm" onclick="closeFolderDetail()" title="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        ${recordsHtml}
+      </div>
+    </div>`;
+
+  detail.classList.remove('hidden');
+  detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeFolderDetail() {
+  openFolderKey = null;
+  document.getElementById('folder-detail').classList.add('hidden');
+}
+
+/* ── Move-to-folder Modal ───────────────────────────────────── */
+let moveRecordId = null;
+function openMoveModal(recordId, name, currentCat) {
+  moveRecordId = recordId;
+  const existingFolders = Object.keys(allFolderData);
+  const opts = existingFolders.map(k =>
+    `<option value="${k}" ${k === currentCat ? 'selected' : ''}>${k}</option>`
+  ).join('');
+
+  const existing = document.getElementById('move-folder-modal');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'move-folder-modal';
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Move Record to Folder</div>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('move-folder-modal').remove()">✕</button>
+      </div>
+      <div class="modal-body stack" style="gap:var(--sp-4)">
+        <div style="font-size:var(--tx-sm);color:var(--taupe)">Document: <strong style="color:var(--text)">${name}</strong></div>
+        <div class="form-group">
+          <label class="form-label">Choose Existing Folder</label>
+          <select id="move-folder-select" class="form-select" onchange="syncMoveInput(this.value)">
+            ${opts}
+            <option value="__custom__">+ Create New Folder...</option>
+          </select>
+        </div>
+        <div class="form-group" id="move-custom-group" style="display:none">
+          <label class="form-label">New Folder Name</label>
+          <input type="text" id="move-folder-custom" class="form-input" placeholder="e.g. Dental, Cardiology, Lab Results...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="document.getElementById('move-folder-modal').remove()">Cancel</button>
+        <button class="btn btn-primary" id="move-confirm-btn" onclick="confirmMove()">Move Record</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  openModal('move-folder-modal');
+}
+
+function syncMoveInput(val) {
+  const grp = document.getElementById('move-custom-group');
+  if (val === '__custom__') {
+    grp.style.display = 'block';
+    document.getElementById('move-folder-custom').focus();
+  } else {
+    grp.style.display = 'none';
+  }
+}
+
+async function confirmMove() {
+  if (!moveRecordId) return;
+  const selVal = document.getElementById('move-folder-select').value;
+  let newCat = selVal;
+  if (selVal === '__custom__') {
+    newCat = document.getElementById('move-folder-custom').value.trim();
+    if (!newCat) {
+      toast('Please enter a new folder name.', 'warning');
+      document.getElementById('move-folder-custom').focus();
+      return;
+    }
+  }
+
+  const btn = document.getElementById('move-confirm-btn');
+  setLoading(btn, true, 'Moving…');
+  try {
+    await api.records.update(moveRecordId, { health_category: newCat });
+    document.getElementById('move-folder-modal').remove();
+    toast(`Record moved to "${newCat}".`, 'success');
+    await loadFolders();
+  } catch (err) {
+    toast(err.message || 'Failed to move record', 'error');
+  } finally {
+    setLoading(btn, false);
+    moveRecordId = null;
+  }
+}
+</script>
+{% endblock %}

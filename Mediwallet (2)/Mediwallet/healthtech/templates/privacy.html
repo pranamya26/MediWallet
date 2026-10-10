@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Privacy & Access Audit{% endblock %}
+{% block nav_privacy %}active{% endblock %}
+{% block page_title %}Privacy & Access Logs{% endblock %}
+
+{% block content %}
+<div class="stack" style="gap:var(--sp-6)">
+
+  <!-- Privacy Mission Card -->
+  <div class="card" style="border-left:4px solid var(--color-teal)">
+    <div class="card-body">
+      <h2 style="font-size:var(--tx-xl);font-weight:800;color:var(--text-primary)">You Own and Control Your Health Data</h2>
+      <p style="color:var(--text-secondary);margin-top:var(--sp-2);line-height:1.6">
+        MediWallet does not make your medical documents publicly accessible. Every shared session requires a time-limited cryptographic token. You can view when your records were accessed and revoke any active sharing session at any time.
+      </p>
+    </div>
+  </div>
+
+  <!-- Active & Historical Sharing Sessions List -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">
+        <span>Active & Historical Sharing Sessions</span>
+      </div>
+      <a href="/share" class="btn btn-primary btn-sm">+ Create New Share Pass</a>
+    </div>
+    <div class="card-body">
+      
+      <div id="shares-loading" class="loading-state">
+        <div class="spinner"></div>
+        <span class="loading-text">Loading access logs...</span>
+      </div>
+
+      <div id="shares-list" class="stack hidden" style="gap:var(--sp-4)"></div>
+
+      <div id="shares-empty" class="empty-state hidden">
+        <div class="empty-icon">🛡️</div>
+        <div class="empty-title">No sharing sessions yet</div>
+        <div class="empty-text">You haven't generated any doctor sharing links. When you do, access history will appear here.</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Revoke Confirmation Modal -->
+<div class="overlay" id="revoke-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Revoke Doctor Access?</div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('revoke-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary);font-size:var(--tx-base)">
+        Are you sure you want to revoke access for <strong id="revoke-doctor-target" style="color:var(--text-primary)"></strong>?
+      </p>
+      <p style="color:var(--error);font-size:var(--tx-xs);margin-top:var(--sp-2)">
+        The doctor's link and QR code will immediately stop working and no further documents can be downloaded.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('revoke-modal')">Cancel</button>
+      <button class="btn btn-danger" id="confirm-revoke-btn" onclick="executeRevoke()">Revoke Immediately</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let shareToRevokeId = null;
+
+(async () => {
+  await requireAuth();
+  await loadShares();
+})();
+
+async function loadShares() {
+  const loading = document.getElementById('shares-loading');
+  const listEl = document.getElementById('shares-list');
+  const emptyEl = document.getElementById('shares-empty');
+
+  loading.classList.remove('hidden');
+  listEl.classList.add('hidden');
+  emptyEl.classList.add('hidden');
+
+  try {
+    const data = await api.share.list();
+    const shares = data.shares || [];
+
+    if (shares.length === 0) {
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    let html = '';
+    shares.forEach(s => {
+      const isExpired = s.status === 'expired';
+      const isRevoked = s.status === 'revoked';
+      const isActive = s.status === 'active';
+
+      let statusBadge = '<span class="badge badge-success">● Active</span>';
+      if (isRevoked) statusBadge = '<span class="badge badge-error">Revoked</span>';
+      else if (isExpired) statusBadge = '<span class="badge badge-neutral">Expired</span>';
+
+      html += `
+        <div class="share-card">
+          <div class="share-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+          </div>
+          <div class="share-card-info">
+            <div style="display:flex;align-items:center;gap:var(--sp-2)">
+              <div class="share-card-name">${s.doctor_name || 'Doctor Session'}</div>
+              ${statusBadge}
+            </div>
+            <div class="share-card-meta">
+              <span>Created: ${fmtDatetime(s.created_at)}</span> · 
+              <span>Expires: ${fmtDatetime(s.expires_at)}</span>
+            </div>
+            <div style="font-size:var(--tx-xs);color:var(--text-secondary);margin-top:4px">
+              👁️ Accessed: <strong>${s.access_count} times</strong> 
+              ${s.last_accessed_at ? `(Last seen ${fmtDatetime(s.last_accessed_at)})` : '(Not opened yet)'}
+            </div>
+          </div>
+          <div class="share-card-actions">
+            ${isActive ? `
+              <button class="btn btn-danger btn-sm" onclick="promptRevoke(${s.id}, '${s.doctor_name || 'this session'}')">
+                Revoke Access
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    listEl.innerHTML = html;
+    listEl.classList.remove('hidden');
+
+  } catch (err) {
+    toast(err.message || 'Failed to load access logs', 'error');
+  } finally {
+    loading.classList.add('hidden');
+  }
+}
+
+function promptRevoke(id, name) {
+  shareToRevokeId = id;
+  document.getElementById('revoke-doctor-target').textContent = name;
+  openModal('revoke-modal');
+}
+
+async function executeRevoke() {
+  if (!shareToRevokeId) return;
+  const btn = document.getElementById('confirm-revoke-btn');
+  setLoading(btn, true, 'Revoking...');
+
+  try {
+    await api.share.revoke(shareToRevokeId);
+    toast('Session revoked successfully. Access terminated.', 'success');
+    closeModal('revoke-modal');
+    loadShares();
+  } catch (err) {
+    toast(err.message || 'Failed to revoke session', 'error');
+  } finally {
+    setLoading(btn, false);
+    shareToRevokeId = null;
+  }
+}
+</script>
+{% endblock %}
