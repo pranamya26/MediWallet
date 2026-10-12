@@ -11,11 +11,11 @@ Patients with long-term conditions often visit multiple doctors, clinics, diagno
 
 When patients change doctors, move to another city, or visit an emergency department, their medical history may not be readily available. This can result in repeated diagnostic tests, incomplete medical information, delays in treatment, and potential medication-related problems.
 
-MediVault addresses this problem by providing a centralized platform where patients can organize their medical records, review their health history, and securely share selected information with healthcare professionals.
+MediWallet addresses this problem by providing a centralized platform where patients can organize their medical records, review their health history, and securely share selected information with healthcare professionals.
 
 2. Our Solution
 
-MediVault is a web-based personal medical-record management application designed to help patients maintain and access their medical history in one place.
+MediWallet is a web-based personal medical-record management application designed to help patients maintain and access their medical history in one place.
 
 The application aims to make medical documents easier to organize, search, review, and share while giving patients control over access to their personal health information.
 
@@ -112,7 +112,7 @@ The exact Python dependency versions and constraints are documented in "requirem
 
 A suggested project structure is:
 
-MediVault/
+MediWallet/
 ├── app.py
 ├── requirements.txt
 ├── README.md
@@ -152,40 +152,30 @@ Install the following:
 
 Step 1: Clone the repository
 
-git clone <YOUR_GITHUB_REPOSITORY_URL>
-cd MediVault
-
-Replace the placeholder with your actual GitHub repository URL.
+git clone <https://github.com/pranamya26/MediWallet>
+cd MediWallet1/mediwallet/healthtech
 
 Step 2: Create a virtual environment
-
 python -m venv .venv
-
 Activate the environment.
 
 Windows:
-
 .venv\Scripts\activate
 
 Linux or macOS:
-
 source .venv/bin/activate
 
 Step 3: Install dependencies
-
 python -m pip install -r requirements.txt
 
 Step 4: Install Tesseract OCR
-
 Tesseract is a separate system dependency and is not installed by installing "pytesseract".
 
 On Ubuntu or Debian-based Linux systems:
-
 sudo apt update
 sudo apt install tesseract-ocr
 
 Verify the installation:
-
 tesseract --version
 
 On other operating systems, install the appropriate Tesseract package and configure its executable path if necessary.
@@ -194,23 +184,13 @@ Step 5: Configure environment variables
 
 Create a local ".env" file if your application uses environment variables.
 
-For example:
-
-SECRET_KEY=replace_with_a_secure_random_value
-DATABASE_URL=sqlite:///medivault.db
-
-These are example settings. Your application must be configured to read the corresponding variables. Do not commit real secrets or credentials to GitHub.
 
 Step 6: Initialize the database
-
 Run the database initialization command or application setup procedure implemented in your project. For example, if your application creates its tables during initialization, follow the relevant instructions in "app.py".
 
 Step 7: Run the application
-
 python app.py
-
 Open the local URL printed by Flask in your terminal, commonly:
-
 http://127.0.0.1:5000
 
 The exact command and URL depend on your application configuration.
@@ -228,7 +208,7 @@ The exact command and URL depend on your application configuration.
 
 8. Privacy and Security
 
-Medical records contain sensitive personal information. MediVault is designed with the following security objectives:
+Medical records contain sensitive personal information. MediWalletis designed with the following security objectives:
 
 - Authenticate users before granting access to private records.
 - Enforce patient-specific authorization checks.
@@ -243,10 +223,8 @@ Security controls must be implemented and tested before the application is used 
 
 9. Open-Source Dependencies and Disclosure
 
-MediVault uses third-party open-source Python packages and the Tesseract OCR engine. Their purposes, versions, and constraints are documented in "requirements.txt".
-
+MediWallet uses third-party open-source Python packages and the Tesseract OCR engine. Their purposes, versions, and constraints are documented in "requirements.txt".
 Third-party software and APIs are used to support web development, database access, document processing, OCR, QR code generation, and automated testing.
-
 Any additional APIs, services, or libraries used in the final implementation should also be disclosed in this repository, along with their purpose and applicable licence information.
 
 10. Testing
@@ -286,26 +264,18 @@ These enhancements depend on available development time, data quality, and integ
 
 12. Disclaimer
 
-MediVault is a medical-record organization and review-support prototype. It is not a substitute for professional medical advice, diagnosis, or treatment.
-
+MediWallet is a medical-record organization and review-support prototype. It is not a substitute for professional medical advice, diagnosis, or treatment.
 Automated text extraction, summaries, and possible duplicate-test warnings may be inaccurate. Healthcare professionals must independently review medical information and make clinical decisions.
-
-The hackathon prototype should use simulated or appropriately authorized data. It should not be assumed to be ready for production healthcare use without further security, privacy, reliability, and compliance assessment.
 
 13. Hackathon Information
 
-Project: MediVault
+Project: MediWallet
 Domain: HealthTech
 Problem Statement: Lost in Transit: Fragmented Medical Records and Repeated Care Across Providers
 Event: 24-Hour Web Development Hackathon — IIITDM Kancheepuram
 
-Repository: Add your GitHub repository URL here.
-Live Demo: Add your deployed application URL here.
-Demo Video: Add your demonstration video URL here.
-
----
+Repository: https://github.com/pranamya26/MediWallet
+Live Demo: https://mediwallet-4-clzf.onrender.com/
+Demo Video: //drive.google.com/file/d/1gHSClcGFSTT-vZEC_TKnzZCsHTASbE22/view?usp=drivesdk.
 
 Built as a hackathon project to explore how patient-controlled digital medical records can support continuity of care.
-
-https://drive.google.com/file/d/1gHSClcGFSTT-vZEC_TKnzZCsHTASbE22/view?usp=drivesdk
-DEPLOYMENT LINK:https://mediwallet-4-clzf.onrender.com/
