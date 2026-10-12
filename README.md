@@ -1,5 +1,5 @@
 # MediWallet
-MediVault — Your Medical History, All in One Place
+MediWallet — Your Medical History, All in One Place
 
 A HealthTech solution for fragmented medical records and continuity of care.
 
